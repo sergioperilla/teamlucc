@@ -43,80 +43,80 @@
 #'              start_date=start_date, end_date=end_date, sensors='LE7',
 #'              pathrows='231062')
 #' }
-espa_extract <- function(in_folder, out_folder, pathrows=NULL, start_date=NULL, 
-                         end_date=NULL, sensors=NULL) {
-    if (!file_test('-d', in_folder)) {
-        stop(paste(in_folder, 'does not exist'))
+espa_extract_sergio <- function(in_folder, out_folder, pathrows=NULL, start_date=NULL, 
+                                end_date=NULL, sensors=NULL) {
+  if (!file_test('-d', in_folder)) {
+    stop(paste(in_folder, 'does not exist'))
+  }
+  if (!file_test('-d', out_folder)) {
+    stop(paste(out_folder, 'does not exist'))
+  }
+  
+  zipfiles <- dir(in_folder, pattern='^.*.tar.gz(ip)?$')
+  
+  # Filter by date
+  img_dates <- as.Date(gsub('-', '', str_extract(zipfiles, '[0-9]{10}T')), '%Y%j')
+  if (!is.null(start_date)) {
+    stopifnot(class(start_date) == 'Date')
+    inc_dates <- which(img_dates >= start_date)
+    zipfiles <- zipfiles[inc_dates]
+    img_dates <- img_dates[inc_dates]
+  }
+  if (!is.null(end_date)) {
+    stopifnot(class(end_date) == 'Date')
+    inc_dates <- which(img_dates < end_date)
+    zipfiles <- zipfiles[inc_dates]
+    img_dates <- img_dates[inc_dates]
+  }
+  
+  # Filter by pathrow
+  img_pathrows <- gsub('(LT[45])|(LE07)|(LC8)', '', str_extract(zipfiles, '((LT[45])|(LE07)|(LC8))[0-9]{6}'))
+  if (!is.null(pathrows)) {
+    stopifnot(!is.na(str_extract(pathrows, '[0-9]{6}$'))) # Other way (\d{6})(?!.*\d)
+    inc_pathrows <- img_pathrows %in% pathrows
+    zipfiles <- zipfiles[inc_pathrows]
+    img_pathrows <- img_pathrows[inc_pathrows]
+    img_dates <- img_dates[inc_pathrows]
+  }
+  
+  # Filter by sensor
+  img_sensors <- str_extract(zipfiles, '^((LT[45])|(LE07)|(LC8))')
+  if (!is.null(sensors)) {
+    stopifnot(!is.na(str_extract(sensors, '^((LT[45])|(LE07)|(LC8))$')))
+    inc_sensors <- img_sensors %in% sensors
+    zipfiles <- zipfiles[inc_sensors]
+    img_pathrows <- img_pathrows[inc_sensors]
+    img_sensors <- img_sensors[inc_sensors]
+    img_dates <- img_dates[inc_sensors]
+  } 
+  
+  img_paths <- str_extract(img_pathrows, '^[0-9]{3}')
+  img_rows <- str_extract(img_pathrows, '[0-9]{3}$')
+  
+  if (length(zipfiles) == 0) {
+    stop('No images found')
+  }
+  
+  for (n in 1:length(zipfiles)) {
+    zipfile_path <- file.path(in_folder, zipfiles[n])
+    # Figure out which satellite the image is from
+    year <- format(img_dates[n], '%Y')
+    julian_day <- format(img_dates[n], '%j')
+    this_out_folder <- file.path(out_folder,
+                                 paste0(img_paths[n],'-', img_rows[n], '_', year, 
+                                        '-', julian_day, '_', img_sensors[n]))
+    if (!file_test('-d', this_out_folder)) {
+      dir.create(this_out_folder)
+    } else {
+      message(paste('Skipping', zipfiles[n], '- output dir', 
+                    this_out_folder, 'already exists.'))
+      next
     }
-    if (!file_test('-d', out_folder)) {
-        stop(paste(out_folder, 'does not exist'))
+    message(paste0(n, ' of ', length(zipfiles), '. Extracting ', zipfiles[n], ' to ', this_out_folder))
+    ret_code <- untar(zipfile_path, exdir=file.path(this_out_folder))
+    if (ret_code != 0) {
+      message(paste('WARNING: error extracting', zipfiles[n], '- return 
+                    code', ret_code))
     }
-
-    zipfiles <- dir(in_folder, pattern='^.*.tar.gz(ip)?$')
-
-    # Filter by date
-    img_dates <- as.Date(gsub('-', '', str_extract(zipfiles, '[0-9]{7}-')), '%Y%j')
-    if (!is.null(start_date)) {
-        stopifnot(class(start_date) == 'Date')
-        inc_dates <- which(img_dates >= start_date)
-        zipfiles <- zipfiles[inc_dates]
-        img_dates <- img_dates[inc_dates]
-    }
-    if (!is.null(end_date)) {
-        stopifnot(class(end_date) == 'Date')
-        inc_dates <- which(img_dates < end_date)
-        zipfiles <- zipfiles[inc_dates]
-        img_dates <- img_dates[inc_dates]
-    }
-
-    # Filter by pathrow
-    img_pathrows <- gsub('(LT[45])|(LE7)|(LC8)', '', str_extract(zipfiles, '((LT[45])|(LE7)|(LC8))[0-9]{6}'))
-    if (!is.null(pathrows)) {
-        stopifnot(!is.na(str_extract(pathrows, '[0-9]{6}')))
-        inc_pathrows <- img_pathrows %in% pathrows
-        zipfiles <- zipfiles[inc_pathrows]
-        img_pathrows <- img_pathrows[inc_pathrows]
-        img_dates <- img_dates[inc_pathrows]
-    }
-
-    # Filter by sensor
-    img_sensors <- str_extract(zipfiles, '^((LT[45])|(LE7)|(LC8))')
-    if (!is.null(sensors)) {
-        stopifnot(!is.na(str_extract(sensors, '^((LT[45])|(LE7)|(LC8))$')))
-        inc_sensors <- img_sensors %in% sensors
-        zipfiles <- zipfiles[inc_sensors]
-        img_pathrows <- img_pathrows[inc_sensors]
-        img_sensors <- img_sensors[inc_sensors]
-        img_dates <- img_dates[inc_sensors]
-    }
-
-    img_paths <- str_extract(img_pathrows, '^[0-9]{3}')
-    img_rows <- str_extract(img_pathrows, '[0-9]{3}$')
-
-    if (length(zipfiles) == 0) {
-        stop('No images found')
-    }
-
-    for (n in 1:length(zipfiles)) {
-        zipfile_path <- file.path(in_folder, zipfiles[n])
-        # Figure out which satellite the image is from
-        year <- format(img_dates[n], '%Y')
-        julian_day <- format(img_dates[n], '%j')
-        this_out_folder <- file.path(out_folder,
-                                     paste0(img_paths[n],'-', img_rows[n], '_', year, 
-                                            '-', julian_day, '_', img_sensors[n]))
-        if (!file_test('-d', this_out_folder)) {
-            dir.create(this_out_folder)
-        } else {
-            message(paste('Skipping', zipfiles[n], '- output dir', 
-                          this_out_folder, 'already exists.'))
-            next
-        }
-        message(paste0(n, ' of ', length(zipfiles), '. Extracting ', zipfiles[n], ' to ', this_out_folder))
-        ret_code <- untar(zipfile_path, exdir=file.path(this_out_folder))
-        if (ret_code != 0) {
-            message(paste('WARNING: error extracting', zipfiles[n], '- return 
-                          code', ret_code))
-        }
-    }
+  }
 }
